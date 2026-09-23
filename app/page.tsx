@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabase";
-import { TABELA_24_ESOCIAL, ItemTabela24 } from "./tabela24";
 
 interface AgenteRegulatorio {
   name: string;
@@ -109,15 +108,12 @@ export default function Home() {
   const [responsavelTecnico, setResponsavelTecnico] = useState<string>("Thiago Soares da Rocha");
   const [crea, setCrea] = useState<string>("CREA/AM - 123456/D");
 
-  // Histórico em Nuvem
   const [historico, setHistorico] = useState<AvaliacaoHO[]>([]);
-  const [carregandoNuvem, setCarregandoNuvem] = useState<boolean>(false);
 
   const agenteAtual = AGENTS_DATABASE[agenteKey] || AGENTS_DATABASE.tolueno;
 
   const carregarNuvem = async () => {
     try {
-      setCarregandoNuvem(true);
       const { data, error } = await supabase
         .from("avaliacoes")
         .select("*")
@@ -141,8 +137,6 @@ export default function Home() {
       }
     } catch (e) {
       console.error(e);
-    } finally {
-      setCarregandoNuvem(false);
     }
   };
 
@@ -150,7 +144,7 @@ export default function Home() {
     carregarNuvem();
   }, []);
 
-  // --- LÓGICA DE INSALUBRIDADE (NR-15) ---
+  // Lógica de Insalubridade (NR-15)
   let isInsalubre = false;
   let justificativaNR15 = "";
 
@@ -173,10 +167,11 @@ export default function Home() {
     }
   } else {
     isInsalubre = true;
-    justificativaNR15 = `Enquadramento qualitativo pelo Anexo 13 da NR-15 fundamentado na inspeção do ambiente de trabalho e manipulação contínua do agente químico.`;
+    justificativaNR15 =
+      "Enquadramento qualitativo pelo Anexo 13 da NR-15 fundamentado na inspeção do ambiente de trabalho e manipulação contínua do agente químico.";
   }
 
-  // --- LÓGICA PREVIDENCIÁRIA / LTCAT (DEC. 3.048/99 + LINACH) ---
+  // Lógica Previdenciária / LTCAT
   let isEspecial = false;
   let justificativaLTCAT = "";
   const isLinachGrupo1 = agenteAtual.linach.includes("Grupo 1");
@@ -200,7 +195,6 @@ export default function Home() {
       "Enquadramento especial reconhecido com base na habitualidade e permanência da atividade nociva na área avaliada.";
   }
 
-  // Salvar no Supabase
   const salvarAvaliacaoNuvem = async () => {
     try {
       const { error } = await supabase.from("avaliacoes").insert([
@@ -219,9 +213,9 @@ export default function Home() {
       ]);
 
       if (error) {
-        alert(`Erro ao salvar no banco em nuvem: ${error.message}`);
+        alert(`Erro ao salvar no banco: ${error.message}`);
       } else {
-        alert("Laudo gravado com sucesso no PostgreSQL (Supabase)!");
+        alert("Laudo gravado com sucesso no PostgreSQL!");
         carregarNuvem();
       }
     } catch (e: any) {
@@ -229,7 +223,6 @@ export default function Home() {
     }
   };
 
-  // Exportar Excel
   const exportarParaExcel = () => {
     if (historico.length === 0) {
       alert("Nenhum dado gravado para exportar!");
@@ -252,7 +245,6 @@ export default function Home() {
     XLSX.writeFile(wb, `Laudos_Periciais_${Date.now()}.xlsx`);
   };
 
-  // Gerador XML S-2240
   const gerarXmlS2240 = () => {
     const idEvento = `ID1${cnpj.replace(/\D/g, "").padEnd(14, "0")}${Date.now().toString().slice(-14)}`;
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -321,7 +313,7 @@ export default function Home() {
               onClick={salvarAvaliacaoNuvem}
               className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5"
             >
-              <span>💾 Salvar Laudo no Banco</span>
+              <span>💾 Salvar Laudo</span>
             </button>
             <button
               onClick={exportarParaExcel}
@@ -339,7 +331,7 @@ export default function Home() {
               onClick={() => window.print()}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5"
             >
-              <span>🖨️ Imprimir Laudo Pericial (A4)</span>
+              <span>🖨️ Imprimir Laudo (A4)</span>
             </button>
           </div>
         </header>
@@ -347,16 +339,13 @@ export default function Home() {
         {/* CORPO PRINCIPAL COM GRID DE 12 COLUNAS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 print:block">
           
-          {/* ========================================================
-              COLUNA DA ESQUERDA: PARÂMETROS DE AVALIAÇÃO (NO-PRINT)
-             ======================================================== */}
+          {/* COLUNA ESQUERDA: PARÂMETROS */}
           <div className="print:hidden lg:col-span-5 space-y-6">
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
               <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <span className="text-indigo-600 font-bold">⚙️</span> Parâmetros da Avaliação Ocupacional
               </h2>
 
-              {/* SELEÇÃO DO AGENTE QUÍMICO */}
               <div className="mb-4">
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
                   Agente Químico Avaliado
@@ -379,7 +368,6 @@ export default function Home() {
                 </select>
               </div>
 
-              {/* DADOS DA EMPRESA, GHE E SETOR */}
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <div>
                   <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Empresa</label>
@@ -422,7 +410,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* TIPO DE AVALIAÇÃO (QUANTITATIVA OU QUALITATIVA) */}
               <div className="mb-4">
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
                   Abordagem de Avaliação
@@ -437,7 +424,7 @@ export default function Home() {
                         : "border-slate-300 bg-white text-slate-600"
                     }`}
                   >
-                    <span>📈 Quantitativa (Medição)</span>
+                    <span>📈 Quantitativa</span>
                   </button>
                   <button
                     type="button"
@@ -448,12 +435,11 @@ export default function Home() {
                         : "border-slate-300 bg-white text-slate-600"
                     }`}
                   >
-                    <span>👁️ Qualitativa (Inspeção)</span>
+                    <span>👁️ Qualitativa</span>
                   </button>
                 </div>
               </div>
 
-              {/* MEDIÇÕES QUANTITATIVAS */}
               {tipoAvaliacao === "quant" && (
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-4 space-y-3">
                   <div className="flex justify-between items-center">
@@ -478,7 +464,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* PROTEÇÕES E CONTROLES (EPI EFICAZ) */}
               <div className="space-y-3 pt-2 border-t border-slate-200">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-700 cursor-pointer">
@@ -496,7 +481,6 @@ export default function Home() {
                 </p>
               </div>
 
-              {/* DADOS DO RESPONSÁVEL TÉCNICO */}
               <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-200 mt-4">
                 <div>
                   <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Responsável Técnico</label>
@@ -521,13 +505,10 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ========================================================
-              COLUNA DA DIREITA: PRÉVIA DO LAUDO TÉCNICO (IMPRIMÍVEL)
-             ======================================================== */}
+          {/* COLUNA DIREITA: LAUDO TÉCNICO A4 */}
           <div className="lg:col-span-7 print:w-full">
             <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm text-slate-800 print:shadow-none print:border-none print:p-0">
               
-              {/* CABEÇALHO DO LAUDO */}
               <div className="border-b-2 border-slate-800 pb-4 mb-6 flex justify-between items-start">
                 <div>
                   <div className="text-xs font-black uppercase tracking-widest text-indigo-700">
@@ -553,7 +534,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* IDENTIFICAÇÃO DO POSTO AVALIADO */}
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6 text-xs grid grid-cols-2 gap-4">
                 <div>
                   <span className="text-slate-400 font-bold uppercase block">GHE / Grupo Homogêneo:</span>
@@ -573,7 +553,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* SEÇÃO 1: CONCLUSÃO DE INSALUBRIDADE (NR-15) */}
+              {/* SEÇÃO 1: NR-15 */}
               <div className="mb-6">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
                   <span className="text-indigo-600 font-bold">🛡️</span> 1. Conclusão Trabalhista - Adicional de Insalubridade (NR-15)
@@ -603,7 +583,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* SEÇÃO 2: CONCLUSÃO DE APOSENTADORIA ESPECIAL (LTCAT) */}
+              {/* SEÇÃO 2: LTCAT */}
               <div className="mb-6">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
                   <span className="text-indigo-600 font-bold">📋</span> 2. Conclusão Previdenciária - Aposentadoria Especial (LTCAT)
@@ -631,7 +611,6 @@ export default function Home() {
                   </div>
                   <p className="text-xs leading-relaxed mb-3">{justificativaLTCAT}</p>
 
-                  {/* TABELA ESOCIAL E LINACH */}
                   <div className="grid grid-cols-2 gap-2 text-[11px] bg-white/70 p-2.5 rounded border border-slate-200">
                     <div>
                       <span className="text-slate-400 block font-medium">Código eSocial (Tab. 24):</span>
@@ -645,7 +624,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* SEÇÃO 3: EMBASAMENTO LEGAL COMPLETO */}
+              {/* SEÇÃO 3: FUNDAMENTAÇÃO LEGAL */}
               <div className="mb-8">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
                   3. Fundamentação Técnica e Jurídica Consolidada
@@ -660,7 +639,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* ASSINATURA TÉCNICA */}
+              {/* ASSINATURA */}
               <div className="mt-12 pt-6 border-t border-slate-300 grid grid-cols-2 gap-8 text-center text-xs">
                 <div>
                   <div className="border-b border-slate-400 mb-1 w-48 mx-auto"></div>
