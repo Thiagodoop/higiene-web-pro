@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabase";
+import { TABELA_24_ESOCIAL, ItemTabela24 } from "./tabela24";
 
 interface AvaliacaoHO {
   id: string;
@@ -42,8 +43,12 @@ export default function Home() {
   );
   const [caEpi, setCaEpi] = useState("41235");
 
+  // Busca na Tabela 24
+  const [buscaTabela24, setBuscaTabela24] = useState("");
+  const [filtroGrupo, setFiltroGrupo] = useState<string>("Todos");
+
   // --- METROLOGIA ---
-  const [equipamentoNome, setEquipamentoNome] = useState("Dosímetro / Acelerômetro Digital Integrador");
+  const [equipamentoNome, setEquipamentoNome] = useState("Dosímetro / Bomba Amostradora Digital");
   const [certificadoCalibracao, setCertificadoCalibracao] = useState("CAL-2026/8941 - Laboratório Acreditado RBC");
 
   // --- RUÍDO ---
@@ -59,12 +64,30 @@ export default function Home() {
   const [tbs, setTbs] = useState<number>(28.0);
   const [taxaMetabolica, setTaxaMetabolica] = useState<number>(300);
 
-  // --- QUÍMICO ---
-  const [substancia, setSubstancia] = useState("Tolueno");
+  // --- QUÍMICO COM BANCO DE PRODUTOS ---
+  const listaProdutosQuimicos = TABELA_24_ESOCIAL.filter((item) => item.grupo === "Químico");
+  const [produtoSelecionado, setProdutoSelecionado] = useState<ItemTabela24>(
+    listaProdutosQuimicos.find((p) => p.codigo === "01.17.002") || listaProdutosQuimicos[0]
+  );
+  const [substanciaCustomizada, setSubstanciaCustomizada] = useState(produtoSelecionado.descricao);
   const [massaColetadaMg, setMassaColetadaMg] = useState<number>(1.2);
   const [vazaoBombaLpm, setVazaoBombaLpm] = useState<number>(2.0);
   const [tempoColetaMin, setTempoColetaMin] = useState<number>(240);
-  const [limiteToleranciaMgM3, setLimiteToleranciaMgM3] = useState<number>(290);
+  const [limiteToleranciaMgM3, setLimiteToleranciaMgM3] = useState<number>(
+    produtoSelecionado.limitePadraoMgM3 || 290
+  );
+
+  // Manipular mudança de produto químico
+  const handleSelecionarProduto = (cod: string) => {
+    const prod = listaProdutosQuimicos.find((p) => p.codigo === cod);
+    if (prod) {
+      setProdutoSelecionado(prod);
+      setSubstanciaCustomizada(prod.descricao);
+      if (prod.limitePadraoMgM3) {
+        setLimiteToleranciaMgM3(prod.limitePadraoMgM3);
+      }
+    }
+  };
 
   // --- VIBRAÇÃO ---
   const [tipoVibracao, setTipoVibracao] = useState<"vmb" | "vci">("vmb");
@@ -74,11 +97,10 @@ export default function Home() {
   const [awz, setAwz] = useState<number>(3.4);
   const [vdvrMedido, setVdvrMedido] = useState<number>(10.5);
 
-  // --- BANCO DE DADOS NA NUVEM (SUPABASE / POSTGRESQL) ---
+  // BANCO DE DADOS NA NUVEM
   const [historico, setHistorico] = useState<AvaliacaoHO[]>([]);
   const [carregando, setCarregando] = useState<boolean>(false);
 
-  // Função para buscar dados da nuvem
   const carregarHistoricoNuvem = async () => {
     try {
       setCarregando(true);
@@ -118,7 +140,6 @@ export default function Home() {
     carregarHistoricoNuvem();
   }, []);
 
-  // Salvar medição direto no Supabase
   const salvarNoBancoNuvem = async (novoRegistro: {
     agente: string;
     codigo_esocial: string;
@@ -128,7 +149,7 @@ export default function Home() {
     enquadramento: string;
   }) => {
     try {
-      const { data, error } = await supabase.from("avaliacoes").insert([
+      const { error } = await supabase.from("avaliacoes").insert([
         {
           agente: novoRegistro.agente,
           codigo_esocial: novoRegistro.codigo_esocial,
@@ -140,7 +161,7 @@ export default function Home() {
           certificado_calibracao: certificadoCalibracao,
           data_medicao: new Date().toISOString().split("T")[0],
         },
-      ]).select();
+      ]);
 
       if (error) {
         alert(`Erro ao salvar no banco em nuvem: ${error.message}`);
@@ -153,7 +174,6 @@ export default function Home() {
     }
   };
 
-  // Excluir medição da nuvem
   const excluirAvaliacaoNuvem = async (id: string) => {
     if (!confirm("Tem certeza que deseja remover esta avaliação do banco em nuvem?")) return;
     try {
@@ -192,7 +212,7 @@ export default function Home() {
     XLSX.writeFile(workbook, `Banco_Higiene_Nuvem_${Date.now()}.xlsx`);
   };
 
-  // CÁLCULOS TÉCNICOS
+  // CÁLCULOS
   const calcularNR15 = () => {
     const tPermitido = 480 / Math.pow(2, (laeq - 85) / 5);
     const doseProjetada = (tTrabalhoMinutos / tPermitido) * 100;
@@ -279,6 +299,15 @@ export default function Home() {
   const rQuimico = calcularQuimico();
   const rVib = calcularVibracao();
 
+  // Filtro dinâmico da Tabela 24
+  const tabela24Filtrada = TABELA_24_ESOCIAL.filter((item) => {
+    const bateTexto =
+      item.codigo.toLowerCase().includes(buscaTabela24.toLowerCase()) ||
+      item.descricao.toLowerCase().includes(buscaTabela24.toLowerCase());
+    const bateGrupo = filtroGrupo === "Todos" || item.grupo === filtroGrupo;
+    return bateTexto && bateGrupo;
+  });
+
   // XML S-2240
   const gerarXmlS2240 = () => {
     const idEvento = `ID1${cnpj.padEnd(14, "0")}${Date.now().toString().slice(-14)}`;
@@ -288,7 +317,7 @@ export default function Home() {
     <ideEvento>
       <tpAmb>1</tpAmb>
       <procEmi>1</procEmi>
-      <verProc>HigieneWeb_Pro_Postgres</verProc>
+      <verProc>HigieneWeb_Pro_Tabela24</verProc>
     </ideEvento>
     <ideEmpregador>
       <tpInsc>1</tpInsc>
@@ -305,14 +334,14 @@ export default function Home() {
         <dscSetor>${ghe}</dscSetor>
       </infoAmb>
       <infoAtiv>
-        <dscAtivDes>${funcao} - Atividades operacionais cadastradas no PostgreSQL.</dscAtivDes>
+        <dscAtivDes>${funcao} - Atividades operacionais cadastradas com código Tabela 24.</dscAtivDes>
       </infoAtiv>
       <agenteNocivo>
         <fatRisco>
-          <codFatRisco>01.01.001</codFatRisco>
+          <codFatRisco>${produtoSelecionado.codigo}</codFatRisco>
           <tpAval>1</tpAval>
-          <intConc>${rNHO.nen}</intConc>
-          <unMed>dB(A)</unMed>
+          <intConc>${rQuimico.concentracaoMgM3}</intConc>
+          <unMed>${produtoSelecionado.unidade || "mg/m3"}</unMed>
           <epcEpi>
             <utilizEPC>2</utilizEPC>
             <utilizEPI>2</utilizEPI>
@@ -343,7 +372,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
-      
       {/* HEADER */}
       <header className="print:hidden bg-slate-900 text-white px-8 py-4 shadow-md flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
@@ -352,7 +380,7 @@ export default function Home() {
           </span>
           <span className="text-[11px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800 flex items-center gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            PostgreSQL Nuvem Conectado
+            Tabela 24 eSocial Integrada
           </span>
         </div>
 
@@ -379,7 +407,7 @@ export default function Home() {
               moduloAtivo === "quimico" ? "bg-emerald-500 text-slate-950 font-bold" : "text-slate-300 hover:bg-slate-800"
             }`}
           >
-            Químicos
+            Químicos & Poeiras
           </button>
           <button
             onClick={() => setModuloAtivo("vibracao")}
@@ -395,7 +423,7 @@ export default function Home() {
               moduloAtivo === "esocial" ? "bg-blue-500 text-white font-black" : "bg-slate-800 text-blue-300 hover:bg-slate-700"
             }`}
           >
-            🛡️ eSocial S-2240
+            🛡️ Tabela 24 & S-2240
           </button>
           <button
             onClick={() => {
@@ -419,9 +447,8 @@ export default function Home() {
         </nav>
       </header>
 
-      {/* CONTEÚDO */}
+      {/* ÁREA PRINCIPAL */}
       <main className="max-w-7xl mx-auto p-6 print:p-0 print:max-w-full">
-        
         {/* IDENTIFICAÇÃO GERAL */}
         {moduloAtivo !== "historico" && moduloAtivo !== "laudo" && moduloAtivo !== "esocial" && (
           <section className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-6">
@@ -469,13 +496,292 @@ export default function Home() {
           </section>
         )}
 
-        {/* RUÍDO */}
+        {/* 1. MÓDULO QUÍMICOS EXPANDIDO COM CATÁLOGO COMPLETO */}
+        {moduloAtivo === "quimico" && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <section className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">
+                  Seleção Rápida no Catálogo de Químicos & Poeiras (NR-15 / ACGIH / eSocial)
+                </h2>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Produto / Substância Química da Tabela 24
+                  </label>
+                  <select
+                    value={produtoSelecionado.codigo}
+                    onChange={(e) => handleSelecionarProduto(e.target.value)}
+                    className="w-full text-sm font-semibold border border-slate-300 rounded-lg px-3 py-2.5 bg-slate-50 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  >
+                    {listaProdutosQuimicos.map((prod) => (
+                      <option key={prod.codigo} value={prod.codigo}>
+                        [{prod.codigo}] {prod.descricao} (L.T.: {prod.limitePadraoMgM3} {prod.unidade})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Nome Específico / Detalhe</label>
+                    <input
+                      type="text"
+                      value={substanciaCustomizada}
+                      onChange={(e) => setSubstanciaCustomizada(e.target.value)}
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Limite de Tolerância ({produtoSelecionado.unidade || "mg/m³"})
+                    </label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={limiteToleranciaMgM3}
+                      onChange={(e) => setLimiteToleranciaMgM3(Number(e.target.value))}
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold text-emerald-800"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Massa Coletada (mg)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={massaColetadaMg}
+                      onChange={(e) => setMassaColetadaMg(Number(e.target.value))}
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold"
+                    />
+                    <span className="text-[10px] text-slate-400">Resultado do laboratório</span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Vazão da Bomba (L/min)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={vazaoBombaLpm}
+                      onChange={(e) => setVazaoBombaLpm(Number(e.target.value))}
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold"
+                    />
+                    <span className="text-[10px] text-slate-400">Calibrador de vazão</span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Tempo de Coleta (min)</label>
+                    <input
+                      type="number"
+                      value={tempoColetaMin}
+                      onChange={(e) => setTempoColetaMin(Number(e.target.value))}
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold"
+                    />
+                    <span className="text-[10px] text-slate-400">Duração da amostragem</span>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            {/* Painel de Resultados Químicos */}
+            <div className="space-y-4">
+              <section className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                <span className="text-xs font-semibold text-slate-500 uppercase block mb-1">
+                  Concentração Calculada
+                </span>
+                <div className="text-3xl font-black text-slate-900 mb-1">
+                  {rQuimico.concentracaoMgM3} {produtoSelecionado.unidade || "mg/m³"}
+                </div>
+                <div className="text-xs text-slate-500 mb-3">
+                  Volume total amostrado: <strong>{rQuimico.volumeM3} m³</strong>
+                </div>
+
+                <div className="p-2.5 rounded bg-slate-50 border border-slate-200 text-xs space-y-1 mb-3">
+                  <div><strong>Código eSocial:</strong> <span className="font-mono text-blue-700 font-bold">{produtoSelecionado.codigo}</span></div>
+                  <div><strong>L.T. Referência:</strong> {limiteToleranciaMgM3} {produtoSelecionado.unidade || "mg/m³"}</div>
+                </div>
+
+                {rQuimico.acimaLT ? (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded">
+                    Acima do Limite de Tolerância (Insalubre)
+                  </div>
+                ) : rQuimico.atingiuAcao ? (
+                  <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded">
+                    Nível de Ação Atingido (&gt; 50% do L.T.)
+                  </div>
+                ) : (
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded">
+                    Concentração Conforme (Salubre)
+                  </div>
+                )}
+              </section>
+
+              <button
+                onClick={() => {
+                  salvarNoBancoNuvem({
+                    agente: "Químico",
+                    codigo_esocial: produtoSelecionado.codigo,
+                    funcao,
+                    parametros_campo: `Substância: ${substanciaCustomizada}`,
+                    resultado_numerico: `Conc: ${rQuimico.concentracaoMgM3} ${produtoSelecionado.unidade || "mg/m3"}`,
+                    enquadramento: rQuimico.acimaLT ? "Acima do L.T. (Insalubre)" : "Aceitável",
+                  });
+                }}
+                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
+              >
+                <span>💾 Salvar no PostgreSQL</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 2. MÓDULO TABELA 24 COMPLETA & GERADOR S-2240 */}
+        {moduloAtivo === "esocial" && (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                    🛡️ Tabela 24 do eSocial Completa & Emissor S-2240
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Catálogo de Fatores de Risco (Químicos, Físicos, Biológicos e Ausência) conforme v_S-1.3.
+                  </p>
+                </div>
+                <button
+                  onClick={gerarXmlS2240}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow transition-all flex items-center gap-2"
+                >
+                  ⚡ Baixar Arquivo XML (S-2240)
+                </button>
+              </div>
+
+              {/* Parâmetros do Trabalhador */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-lg border border-slate-200 mb-6">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">CPF Trabalhador</label>
+                  <input
+                    type="text"
+                    value={cpfTrabalhador}
+                    onChange={(e) => setCpfTrabalhador(e.target.value)}
+                    className="w-full text-xs font-bold border border-slate-300 rounded px-2.5 py-2 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Matrícula no RH</label>
+                  <input
+                    type="text"
+                    value={matriculaTrabalhador}
+                    onChange={(e) => setMatriculaTrabalhador(e.target.value)}
+                    className="w-full text-xs font-bold border border-slate-300 rounded px-2.5 py-2 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Data Início Condição</label>
+                  <input
+                    type="date"
+                    value={dataInicioCondicao}
+                    onChange={(e) => setDataInicioCondicao(e.target.value)}
+                    className="w-full text-xs font-bold border border-slate-300 rounded px-2.5 py-2 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">C.A. do EPI</label>
+                  <input
+                    type="text"
+                    value={caEpi}
+                    onChange={(e) => setCaEpi(e.target.value)}
+                    className="w-full text-xs font-bold border border-slate-300 rounded px-2.5 py-2 bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* BUSCADOR E FILTROS DA TABELA 24 */}
+              <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
+                <div className="flex-1 min-w-[280px]">
+                  <input
+                    type="text"
+                    placeholder="🔎 Digite o nome do agente ou o código (Ex: Benzeno, 01.03.001, Calor, Ruído)..."
+                    value={buscaTabela24}
+                    onChange={(e) => setBuscaTabela24(e.target.value)}
+                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {["Todos", "Químico", "Físico", "Biológico", "Especial"].map((grp) => (
+                    <button
+                      key={grp}
+                      onClick={() => setFiltroGrupo(grp)}
+                      className={`px-3 py-1 text-xs rounded-lg font-semibold border transition-all ${
+                        filtroGrupo === grp
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {grp}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* TABELA DE CÓDIGOS */}
+              <div className="overflow-x-auto border border-slate-200 rounded-lg max-h-96">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 sticky top-0">
+                    <tr>
+                      <th className="py-2.5 px-3">Código eSocial</th>
+                      <th className="py-2.5 px-3">Grupo</th>
+                      <th className="py-2.5 px-3">Descrição do Fator de Risco</th>
+                      <th className="py-2.5 px-3">L.T. Referência</th>
+                      <th className="py-2.5 px-3">Unidade</th>
+                      <th className="py-2.5 px-3 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {tabela24Filtrada.map((item) => (
+                      <tr key={item.codigo} className="hover:bg-blue-50 transition-colors">
+                        <td className="py-2.5 px-3 font-mono font-bold text-blue-700">{item.codigo}</td>
+                        <td className="py-2.5 px-3">
+                          <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-slate-100 text-slate-700">
+                            {item.grupo}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-medium text-slate-900">{item.descricao}</td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          {item.limitePadraoMgM3 ? `${item.limitePadraoMgM3}` : "-"}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-500 font-mono">{item.unidade || "-"}</td>
+                        <td className="py-2.5 px-3 text-right">
+                          <button
+                            onClick={() => {
+                              if (item.grupo === "Químico") {
+                                handleSelecionarProduto(item.codigo);
+                                setModuloAtivo("quimico");
+                              } else {
+                                alert(`Código ${item.codigo} selecionado para o evento S-2240!`);
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold rounded"
+                          >
+                            Usar Risco
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 3. RUÍDO */}
         {moduloAtivo === "ruido" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
               <section className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">
-                  Dados da Medição de Ruído
+                  Dados da Medição de Ruído [Código eSocial 02.01.001]
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
@@ -532,7 +838,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                    <span className="text-xs font-medium text-slate-500 uppercase">NHO-01 / eSocial (q=3)</span>
+                    <span className="text-xs font-medium text-slate-500 uppercase">NHO-01 / eSocial [02.01.001]</span>
                     <div className="text-2xl font-black mt-1 text-slate-900">NEN {rNHO.nen} dBA</div>
                     <div className="mt-2">
                       {rNHO.critico ? (
@@ -553,7 +859,7 @@ export default function Home() {
                 onClick={() => {
                   salvarNoBancoNuvem({
                     agente: "Ruído",
-                    codigo_esocial: "01.01.001",
+                    codigo_esocial: "02.01.001",
                     funcao,
                     parametros_campo: `LAeq: ${laeq} dBA | NRRsf: ${nrrSf} dB`,
                     resultado_numerico: `Dose: ${rNR15.doseProjetada}% | NEN: ${rNHO.nen} dBA`,
@@ -562,19 +868,19 @@ export default function Home() {
                 }}
                 className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
               >
-                <span>💾 Salvar no PostgreSQL (Nuvem)</span>
+                <span>💾 Salvar no PostgreSQL</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* CALOR */}
+        {/* 4. CALOR */}
         {moduloAtivo === "calor" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
               <section className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">
-                  Termômetro de Globo (NHO-06)
+                  Termômetro de Globo (NHO-06) [Código eSocial 02.01.014]
                 </h2>
                 <div className="mb-4">
                   <label className="flex items-center space-x-2 text-sm text-slate-700 cursor-pointer">
@@ -634,7 +940,7 @@ export default function Home() {
                 onClick={() => {
                   salvarNoBancoNuvem({
                     agente: "Calor",
-                    codigo_esocial: "01.18.001",
+                    codigo_esocial: "02.01.014",
                     funcao,
                     parametros_campo: `Tbn: ${tbn}°C | Tg: ${tg}°C`,
                     resultado_numerico: `IBUTG: ${rCalor.ibutg} °C`,
@@ -643,100 +949,13 @@ export default function Home() {
                 }}
                 className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
               >
-                <span>💾 Salvar no PostgreSQL (Nuvem)</span>
+                <span>💾 Salvar no PostgreSQL</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* QUÍMICOS */}
-        {moduloAtivo === "quimico" && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-              <section className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">
-                  Amostragem Química
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Substância</label>
-                    <input
-                      type="text"
-                      value={substancia}
-                      onChange={(e) => setSubstancia(e.target.value)}
-                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Limite (mg/m³)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={limiteToleranciaMgM3}
-                      onChange={(e) => setLimiteToleranciaMgM3(Number(e.target.value))}
-                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Massa (mg)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={massaColetadaMg}
-                      onChange={(e) => setMassaColetadaMg(Number(e.target.value))}
-                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Vazão (L/min)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={vazaoBombaLpm}
-                      onChange={(e) => setVazaoBombaLpm(Number(e.target.value))}
-                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Tempo (min)</label>
-                    <input
-                      type="number"
-                      value={tempoColetaMin}
-                      onChange={(e) => setTempoColetaMin(Number(e.target.value))}
-                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold"
-                    />
-                  </div>
-                </div>
-              </section>
-            </div>
-
-            <div className="space-y-4">
-              <section className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                <span className="text-xs font-semibold text-slate-500 uppercase block mb-1">Concentração</span>
-                <div className="text-3xl font-black text-slate-900 mb-1">{rQuimico.concentracaoMgM3} mg/m³</div>
-              </section>
-              <button
-                onClick={() => {
-                  salvarNoBancoNuvem({
-                    agente: "Químico",
-                    codigo_esocial: "02.01.774",
-                    funcao,
-                    parametros_campo: `Substância: ${substancia}`,
-                    resultado_numerico: `Conc: ${rQuimico.concentracaoMgM3} mg/m³`,
-                    enquadramento: rQuimico.acimaLT ? "Acima do L.T." : "Aceitável",
-                  });
-                }}
-                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
-              >
-                <span>💾 Salvar no PostgreSQL (Nuvem)</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* VIBRAÇÃO */}
+        {/* 5. VIBRAÇÃO */}
         {moduloAtivo === "vibracao" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
@@ -748,7 +967,7 @@ export default function Home() {
                       tipoVibracao === "vmb" ? "bg-slate-900 text-white" : "bg-white text-slate-700"
                     }`}
                   >
-                    VMB - Mãos e Braços
+                    VMB - Mãos e Braços [02.01.002]
                   </button>
                   <button
                     onClick={() => setTipoVibracao("vci")}
@@ -756,7 +975,7 @@ export default function Home() {
                       tipoVibracao === "vci" ? "bg-slate-900 text-white" : "bg-white text-slate-700"
                     }`}
                   >
-                    VCI - Corpo Inteiro
+                    VCI - Corpo Inteiro [02.01.003]
                   </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -805,14 +1024,14 @@ export default function Home() {
 
             <div className="space-y-4">
               <section className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-xs text-slate-500 uppercase font-semibold">aren</span>
+                <span className="text-xs text-slate-500 uppercase font-semibold">aren Calculado</span>
                 <div className="text-3xl font-black text-slate-900 mt-1">{rVib.aren} m/s²</div>
               </section>
               <button
                 onClick={() => {
                   salvarNoBancoNuvem({
                     agente: tipoVibracao === "vmb" ? "Vibração VMB" : "Vibração VCI",
-                    codigo_esocial: tipoVibracao === "vmb" ? "01.02.001" : "01.02.002",
+                    codigo_esocial: tipoVibracao === "vmb" ? "02.01.002" : "02.01.003",
                     funcao,
                     parametros_campo: `aw: ${rVib.aw} m/s² | Texp: ${tempoExpVibMinutos}min`,
                     resultado_numerico: `aren: ${rVib.aren} m/s²`,
@@ -821,76 +1040,13 @@ export default function Home() {
                 }}
                 className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
               >
-                <span>💾 Salvar no PostgreSQL (Nuvem)</span>
+                <span>💾 Salvar no PostgreSQL</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* eSocial S-2240 */}
-        {moduloAtivo === "esocial" && (
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-                <div>
-                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    🛡️ Gerador do Evento S-2240 (eSocial SST)
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Integrado ao banco de dados PostgreSQL.
-                  </p>
-                </div>
-                <button
-                  onClick={gerarXmlS2240}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow transition-all flex items-center gap-2"
-                >
-                  ⚡ Baixar Arquivo XML (S-2240)
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-lg border border-slate-200 mb-6">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">CPF Trabalhador</label>
-                  <input
-                    type="text"
-                    value={cpfTrabalhador}
-                    onChange={(e) => setCpfTrabalhador(e.target.value)}
-                    className="w-full text-xs font-bold border border-slate-300 rounded px-2.5 py-2 bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Matrícula</label>
-                  <input
-                    type="text"
-                    value={matriculaTrabalhador}
-                    onChange={(e) => setMatriculaTrabalhador(e.target.value)}
-                    className="w-full text-xs font-bold border border-slate-300 rounded px-2.5 py-2 bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Data Início</label>
-                  <input
-                    type="date"
-                    value={dataInicioCondicao}
-                    onChange={(e) => setDataInicioCondicao(e.target.value)}
-                    className="w-full text-xs font-bold border border-slate-300 rounded px-2.5 py-2 bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">CA EPI</label>
-                  <input
-                    type="text"
-                    value={caEpi}
-                    onChange={(e) => setCaEpi(e.target.value)}
-                    className="w-full text-xs font-bold border border-slate-300 rounded px-2.5 py-2 bg-white"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* HISTÓRICO SINCRONIZADO NA NUVEM */}
+        {/* 6. HISTÓRICO CENTRALIZADO NA NUVEM */}
         {moduloAtivo === "historico" && (
           <section className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -977,7 +1133,7 @@ export default function Home() {
           </section>
         )}
 
-        {/* LAUDO TÉCNICO A4 */}
+        {/* 7. LAUDO TÉCNICO A4 */}
         {moduloAtivo === "laudo" && (
           <div className="space-y-6">
             <div className="print:hidden bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
@@ -993,7 +1149,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* FOLHA A4 */}
             <div className="bg-white p-12 rounded-xl shadow-lg border border-slate-300 max-w-4xl mx-auto print:shadow-none print:border-none print:p-0 print:m-0">
               <div className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-end">
                 <div>
@@ -1028,7 +1183,7 @@ export default function Home() {
                 <div className="grid grid-cols-1 text-xs gap-y-1.5 px-2">
                   <div><strong>Equipamento de Medição:</strong> {equipamentoNome}</div>
                   <div><strong>Rastreabilidade Metrológica:</strong> {certificadoCalibracao}</div>
-                  <div><strong>Normas Regulamentadoras:</strong> NR-01, NR-09, NR-15, NHO-01, NHO-06, NHO-09 e NHO-10.</div>
+                  <div><strong>Normas Regulamentadoras:</strong> NR-01, NR-09, NR-15 (Anexos 1, 3, 8 e 11), NHO-01, NHO-06, NHO-09 e NHO-10.</div>
                 </div>
               </div>
 
@@ -1049,28 +1204,28 @@ export default function Home() {
                   <tbody>
                     <tr className="border-b border-slate-200">
                       <td className="p-2 font-bold border-r border-slate-300">Ruído Contínuo/Intermitente</td>
-                      <td className="p-2 font-mono border-r border-slate-300">01.01.001</td>
+                      <td className="p-2 font-mono border-r border-slate-300">02.01.001</td>
                       <td className="p-2 border-r border-slate-300">Dose {rNR15.doseProjetada}% | NEN {rNHO.nen} dBA</td>
                       <td className="p-2 border-r border-slate-300">Dose 100% / 85.0 dBA</td>
                       <td className="p-2 font-bold">{rNR15.insalubre ? "Insalubre" : "Salubre"}</td>
                     </tr>
                     <tr className="border-b border-slate-200">
                       <td className="p-2 font-bold border-r border-slate-300">Sobrecarga Térmica (Calor)</td>
-                      <td className="p-2 font-mono border-r border-slate-300">01.18.001</td>
+                      <td className="p-2 font-mono border-r border-slate-300">02.01.014</td>
                       <td className="p-2 border-r border-slate-300">IBUTG {rCalor.ibutg} °C</td>
                       <td className="p-2 border-r border-slate-300">{rCalor.limite} °C</td>
                       <td className="p-2 font-bold">{rCalor.acimaLimite ? "Acima do Limite" : "Conforme"}</td>
                     </tr>
                     <tr className="border-b border-slate-200">
                       <td className="p-2 font-bold border-r border-slate-300">Vapores / Agentes Químicos</td>
-                      <td className="p-2 font-mono border-r border-slate-300">02.01.774</td>
-                      <td className="p-2 border-r border-slate-300">{rQuimico.concentracaoMgM3} mg/m³</td>
-                      <td className="p-2 border-r border-slate-300">{limiteToleranciaMgM3} mg/m³</td>
+                      <td className="p-2 font-mono border-r border-slate-300">{produtoSelecionado.codigo}</td>
+                      <td className="p-2 border-r border-slate-300">{rQuimico.concentracaoMgM3} {produtoSelecionado.unidade || "mg/m³"} ({substanciaCustomizada})</td>
+                      <td className="p-2 border-r border-slate-300">{limiteToleranciaMgM3} {produtoSelecionado.unidade || "mg/m³"}</td>
                       <td className="p-2 font-bold">{rQuimico.acimaLT ? "Acima do Limite" : "Conforme"}</td>
                     </tr>
                     <tr>
                       <td className="p-2 font-bold border-r border-slate-300">Vibração Ocupacional</td>
-                      <td className="p-2 font-mono border-r border-slate-300">{tipoVibracao === "vmb" ? "01.02.001" : "01.02.002"}</td>
+                      <td className="p-2 font-mono border-r border-slate-300">{tipoVibracao === "vmb" ? "02.01.002" : "02.01.003"}</td>
                       <td className="p-2 border-r border-slate-300">aren: {rVib.aren} m/s²</td>
                       <td className="p-2 border-r border-slate-300">{tipoVibracao === "vmb" ? "5.0 m/s²" : "1.1 m/s²"}</td>
                       <td className="p-2 font-bold">{rVib.acimaLT ? "Insalubre" : "Conforme"}</td>
@@ -1095,11 +1250,9 @@ export default function Home() {
                   <div className="text-slate-400 text-[10px]">Engenheiro / Responsável Técnico</div>
                 </div>
               </div>
-
             </div>
           </div>
         )}
-
       </main>
     </div>
   );
