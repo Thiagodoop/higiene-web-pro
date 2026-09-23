@@ -43,7 +43,7 @@ export default function Home() {
   );
   const [caEpi, setCaEpi] = useState("41235");
 
-  // Busca na Tabela 24
+  // Filtros da Tabela 24
   const [buscaTabela24, setBuscaTabela24] = useState("");
   const [filtroGrupo, setFiltroGrupo] = useState<string>("Todos");
 
@@ -64,8 +64,9 @@ export default function Home() {
   const [tbs, setTbs] = useState<number>(28.0);
   const [taxaMetabolica, setTaxaMetabolica] = useState<number>(300);
 
-  // --- QUÍMICO COM BANCO DE PRODUTOS ---
+  // --- QUÍMICO COM CATÁLOGO & LISTA INTERATIVA ---
   const listaProdutosQuimicos = TABELA_24_ESOCIAL.filter((item) => item.grupo === "Químico");
+  const [buscaQuimico, setBuscaQuimico] = useState("");
   const [produtoSelecionado, setProdutoSelecionado] = useState<ItemTabela24>(
     listaProdutosQuimicos.find((p) => p.codigo === "01.17.002") || listaProdutosQuimicos[0]
   );
@@ -77,7 +78,6 @@ export default function Home() {
     produtoSelecionado.limitePadraoMgM3 || 290
   );
 
-  // Manipular mudança de produto químico
   const handleSelecionarProduto = (cod: string) => {
     const prod = listaProdutosQuimicos.find((p) => p.codigo === cod);
     if (prod) {
@@ -97,7 +97,7 @@ export default function Home() {
   const [awz, setAwz] = useState<number>(3.4);
   const [vdvrMedido, setVdvrMedido] = useState<number>(10.5);
 
-  // BANCO DE DADOS NA NUVEM
+  // --- BANCO DE DADOS NA NUVEM (SUPABASE / POSTGRESQL) ---
   const [historico, setHistorico] = useState<AvaliacaoHO[]>([]);
   const [carregando, setCarregando] = useState<boolean>(false);
 
@@ -212,7 +212,7 @@ export default function Home() {
     XLSX.writeFile(workbook, `Banco_Higiene_Nuvem_${Date.now()}.xlsx`);
   };
 
-  // CÁLCULOS
+  // CÁLCULOS TÉCNICOS
   const calcularNR15 = () => {
     const tPermitido = 480 / Math.pow(2, (laeq - 85) / 5);
     const doseProjetada = (tTrabalhoMinutos / tPermitido) * 100;
@@ -496,40 +496,105 @@ export default function Home() {
           </section>
         )}
 
-        {/* 1. MÓDULO QUÍMICOS EXPANDIDO COM CATÁLOGO COMPLETO */}
+        {/* 1. MÓDULO QUÍMICOS COM LISTA INTERATIVA */}
         {moduloAtivo === "quimico" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
+              
+              {/* LISTA E SELEÇÃO DE AGENTES QUÍMICOS */}
+              <section className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                  <div>
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      1. Biblioteca de Agentes Químicos e Poeiras (Tabela 24 eSocial / NR-15)
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Selecione um produto da lista para carregar automaticamente o código e o limite normativo.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-200">
+                    {listaProdutosQuimicos.length} substâncias cadastradas
+                  </span>
+                </div>
+
+                {/* Campo de Busca Rápida na Lista */}
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    value={buscaQuimico}
+                    onChange={(e) => setBuscaQuimico(e.target.value)}
+                    placeholder="🔎 Digite para buscar na lista (Ex: Tolueno, Sílica, Fumos, Solda, Ácido, Xileno, CAS)..."
+                    className="w-full text-xs border border-slate-300 rounded-lg px-3.5 py-2.5 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* GRADE / LISTA ROLÁVEL COM CARDS */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1 border border-slate-200 rounded-lg p-2 bg-slate-50/50">
+                  {listaProdutosQuimicos
+                    .filter((prod) => {
+                      const termo = buscaQuimico.toLowerCase();
+                      return (
+                        prod.descricao.toLowerCase().includes(termo) ||
+                        prod.codigo.toLowerCase().includes(termo) ||
+                        (prod.detalhes && prod.detalhes.toLowerCase().includes(termo)) ||
+                        (prod.casNumber && prod.casNumber.toLowerCase().includes(termo))
+                      );
+                    })
+                    .map((prod) => {
+                      const isSelected = produtoSelecionado.codigo === prod.codigo;
+                      return (
+                        <div
+                          key={prod.codigo}
+                          onClick={() => handleSelecionarProduto(prod.codigo)}
+                          className={`p-3 rounded-lg border text-left cursor-pointer transition-all ${
+                            isSelected
+                              ? "bg-emerald-50/90 border-emerald-500 shadow-sm ring-1 ring-emerald-500"
+                              : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-1 mb-1">
+                            <span className="font-bold text-xs text-slate-800 line-clamp-1">
+                              {prod.descricao}
+                            </span>
+                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-blue-700 whitespace-nowrap">
+                              {prod.codigo}
+                            </span>
+                          </div>
+
+                          <p className="text-[11px] text-slate-500 line-clamp-1 mb-2">
+                            {prod.detalhes || "Avaliação quantitativa de higiene ocupacional"}
+                          </p>
+
+                          <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-100">
+                            <span className="text-slate-400 font-mono text-[10px]">
+                              CAS: {prod.casNumber || "N/A"}
+                            </span>
+                            <span className="font-semibold text-emerald-700">
+                              L.T.: {prod.limitePadraoMgM3} {prod.unidade}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </section>
+
+              {/* DADOS DA COLETA DE CAMPO / LABORATÓRIO */}
               <section className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">
-                  Seleção Rápida no Catálogo de Químicos & Poeiras (NR-15 / ACGIH / eSocial)
+                  2. Parâmetros de Amostragem (Bomba Gravimétrica e Laudo do Laboratório)
                 </h2>
-
-                <div className="mb-4">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Produto / Substância Química da Tabela 24
-                  </label>
-                  <select
-                    value={produtoSelecionado.codigo}
-                    onChange={(e) => handleSelecionarProduto(e.target.value)}
-                    className="w-full text-sm font-semibold border border-slate-300 rounded-lg px-3 py-2.5 bg-slate-50 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    {listaProdutosQuimicos.map((prod) => (
-                      <option key={prod.codigo} value={prod.codigo}>
-                        [{prod.codigo}] {prod.descricao} (L.T.: {prod.limitePadraoMgM3} {prod.unidade})
-                      </option>
-                    ))}
-                  </select>
-                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Nome Específico / Detalhe</label>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Agente Selecionado / Nome Específico
+                    </label>
                     <input
                       type="text"
                       value={substanciaCustomizada}
                       onChange={(e) => setSubstanciaCustomizada(e.target.value)}
-                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-medium"
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-medium bg-slate-50"
                     />
                   </div>
                   <div>
@@ -543,49 +608,57 @@ export default function Home() {
                       onChange={(e) => setLimiteToleranciaMgM3(Number(e.target.value))}
                       className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold text-emerald-800"
                     />
+                    <span className="text-[10px] text-slate-400">Valor normativo preenchido automaticamente</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Massa Coletada (mg)</label>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Massa Coletada (mg)
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       value={massaColetadaMg}
                       onChange={(e) => setMassaColetadaMg(Number(e.target.value))}
-                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold"
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
-                    <span className="text-[10px] text-slate-400">Resultado do laboratório</span>
+                    <span className="text-[10px] text-slate-400">Gravimetria / Espectrometria</span>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Vazão da Bomba (L/min)</label>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Vazão da Bomba (L/min)
+                    </label>
                     <input
                       type="number"
                       step="0.1"
                       value={vazaoBombaLpm}
                       onChange={(e) => setVazaoBombaLpm(Number(e.target.value))}
-                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold"
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
-                    <span className="text-[10px] text-slate-400">Calibrador de vazão</span>
+                    <span className="text-[10px] text-slate-400">Calibrada antes e após</span>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Tempo de Coleta (min)</label>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Tempo de Coleta (min)
+                    </label>
                     <input
                       type="number"
                       value={tempoColetaMin}
                       onChange={(e) => setTempoColetaMin(Number(e.target.value))}
-                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold"
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
-                    <span className="text-[10px] text-slate-400">Duração da amostragem</span>
+                    <span className="text-[10px] text-slate-400">Duração efetiva da amostragem</span>
                   </div>
                 </div>
               </section>
+
             </div>
 
-            {/* Painel de Resultados Químicos */}
+            {/* PAINEL LATERAL DE RESULTADO E ENQUADRAMENTO */}
             <div className="space-y-4">
-              <section className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <section className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm sticky top-6">
                 <span className="text-xs font-semibold text-slate-500 uppercase block mb-1">
                   Concentração Calculada
                 </span>
@@ -596,41 +669,55 @@ export default function Home() {
                   Volume total amostrado: <strong>{rQuimico.volumeM3} m³</strong>
                 </div>
 
-                <div className="p-2.5 rounded bg-slate-50 border border-slate-200 text-xs space-y-1 mb-3">
-                  <div><strong>Código eSocial:</strong> <span className="font-mono text-blue-700 font-bold">{produtoSelecionado.codigo}</span></div>
-                  <div><strong>L.T. Referência:</strong> {limiteToleranciaMgM3} {produtoSelecionado.unidade || "mg/m³"}</div>
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-1.5 mb-4">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Agente Ativo:</span>
+                    <strong className="text-slate-800 text-right truncate max-w-[150px]">{produtoSelecionado.descricao}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Código eSocial:</span>
+                    <strong className="font-mono text-blue-700">{produtoSelecionado.codigo}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">L.T. Referência:</span>
+                    <strong className="text-slate-800">{limiteToleranciaMgM3} {produtoSelecionado.unidade || "mg/m³"}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Nível de Ação (50%):</span>
+                    <strong className="text-slate-800">{(limiteToleranciaMgM3 * 0.5).toFixed(2)} {produtoSelecionado.unidade || "mg/m³"}</strong>
+                  </div>
                 </div>
 
                 {rQuimico.acimaLT ? (
-                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded">
-                    Acima do Limite de Tolerância (Insalubre)
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-lg mb-4">
+                    ⚠️ Acima do Limite de Tolerância (Insalubridade / Aposentadoria Especial)
                   </div>
                 ) : rQuimico.atingiuAcao ? (
-                  <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded">
-                    Nível de Ação Atingido (&gt; 50% do L.T.)
+                  <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-lg mb-4">
+                    ⚡ Nível de Ação Atingido (&gt; 50% do L.T. - Medidas preventivas no PGR)
                   </div>
                 ) : (
-                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded">
-                    Concentração Conforme (Salubre)
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-lg mb-4">
+                    ✓ Concentração Conforme (Abaixo do Nível de Ação)
                   </div>
                 )}
-              </section>
 
-              <button
-                onClick={() => {
-                  salvarNoBancoNuvem({
-                    agente: "Químico",
-                    codigo_esocial: produtoSelecionado.codigo,
-                    funcao,
-                    parametros_campo: `Substância: ${substanciaCustomizada}`,
-                    resultado_numerico: `Conc: ${rQuimico.concentracaoMgM3} ${produtoSelecionado.unidade || "mg/m3"}`,
-                    enquadramento: rQuimico.acimaLT ? "Acima do L.T. (Insalubre)" : "Aceitável",
-                  });
-                }}
-                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
-              >
-                <span>💾 Salvar no PostgreSQL</span>
-              </button>
+                <button
+                  onClick={() => {
+                    salvarNoBancoNuvem({
+                      agente: "Químico",
+                      codigo_esocial: produtoSelecionado.codigo,
+                      funcao,
+                      parametros_campo: `Substância: ${substanciaCustomizada}`,
+                      resultado_numerico: `Conc: ${rQuimico.concentracaoMgM3} ${produtoSelecionado.unidade || "mg/m3"}`,
+                      enquadramento: rQuimico.acimaLT ? "Acima do L.T. (Insalubre)" : "Aceitável",
+                    });
+                  }}
+                  className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
+                >
+                  <span>💾 Salvar no PostgreSQL</span>
+                </button>
+              </section>
             </div>
           </div>
         )}
